@@ -45,19 +45,79 @@ class DQN:
         self.max_experiences = max_experiences
         self.min_experiences = min_experiences
 
-def play(env, TrainNet, TargetNet, epsilon, copy_step):
+    def predict(self, inputs):
+        return self.model(np.atleast_2d(inputs.astype('float32')))
+
+    def train(self, TargetNet):
+        if len(self.experience['s']) < self.min_experiences:
+            return 0
+        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
+        states = np.asarray([self.experience['s'][i] for i in ids])
+        actions = np.asarray([self.experience['a'][i] for i in ids])
+        rewards = np.asarray([self.experience['r'][i] for i in ids])
+        states_next = np.asarray([self.experience['s2'][i] for i in ids])
+        dones = np.asarray([self.experience['done'][i] for i in ids])
+        value_next = np.max(TargetNet.predict(states_next), axis=1)
+        actual_values = np.where(dones, rewards, rewards+self.gamma*value_next)
+
+        with tf.GradientTape() as tape:
+            selected_action_values = tf.math.reduce_sum(
+                self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
+            loss = tf.math.reduce_mean(tf.square(actual_values - selected_action_values))
+        variables = self.model.trainable_variables
+        gradients = tape.gradient(loss, variables)
+        self.optimizer.apply_gradients(zip(gradients, variables))
+        return loss
+
+    def get_action(self, states, epsilon):
+        if np.random.random() < epsilon:
+            return np.random.choice(self.num_actions)
+        else:
+            return np.argmax(self.predict(np.atleast_2d(states))[0])
+
+    def add_experience(self, exp):
+        if len(self.experience['s']) >= self.max_experiences:
+            for key in self.experience.keys():
+                self.experience[key].pop(0)
+        for key, value in exp.items():
+            self.experience[key].append(value)
+
+    def copy_weights(self, TrainNet):
+        variables1 = self.model.trainable_variables
+        variables2 = TrainNet.model.trainable_variables
+        for v1, v2 in zip(variables1, variables2):
+            v1.assign(v2.numpy())
+
+def play(env, TrainNet, TargetNet, epsilon, decay, copy_step):
 
     rewards = 0
     done = False
     observations = env.reset()
+    losses = []
+    i = 0
 
     while True:
+        epsilon = max(min_epsilon, epsilon * decay)
+        prev_observations = observations
         if done:
             score = env.unwrapped.game.get_score()
-            print(score)
+            rewards = score
+            print("iteration: ", i, "total reward: ", rewards)
             env.reset()
         action = TrainNet.get_action(observations, epsilon)
         observation, reward, done, info = env.step(action)
+        rewards += reward
+
+        exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
+        TrainNet.add_experience(exp)
+        loss = TrainNet.train(TargetNet)
+        if isinstance(loss, int):
+            losses.append(loss)
+        else:
+            losses.append(loss.numpy())
+        i += 1
+        if i % copy_step == 0:
+            TargetNet.copy_weights(TrainNet)
 
     return rewards, np.mean(losses)
 
@@ -68,29 +128,22 @@ if __name__ == "__main__":
     num_states = len(env.observation_space.sample())
     num_actions = env.action_space.n
 
-    gamma = 0.99
+    gamma = 0.99 #  decay rate of past observations original 0.99
     copy_step = 25
 
     hidden_units = [200, 200]
     max_experiences = 10000
-    min_experiences = 100
+    min_experiences = 100 # # timesteps to observe before training
 
-    batch_size = 32
+    batch_size = 1 # # size of minibatch, keep it low
     lr = 1e-2
 
     TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
 
-    N = 50000
-    epsilon = 0.99
+    N = 1000
+    epsilon = 0.99 # # starting value of epsilon
     decay = 0.9999
-    min_epsilon = 0.1
+    min_epsilon = 0.1 # # final value of epsilon
 
-    for n in range(N):
-        epsilon = max(min_epsilon, epsilon * decay)
-        total_reward, losses = play(env, TrainNet, TargetNet, epsilon, copy_step)
-
-        if n % 100 == 0:
-            print("episode: ",  n, "episode reward: ", total_reward, "eps: ", epsilon, "episode loss: ", losses)
-
-        env.close()
+    play(env, TrainNet, TargetNet, epsilon, decay, copy_step)
