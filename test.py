@@ -47,12 +47,12 @@ class DQN_Agent:
         model.add(Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
         model.add(Activation('relu'))
 
-        # model.add(Conv2D(64, (4, 4), strides=2, padding='same'))
-        # model.add(Activation('relu'))
+        model.add(Conv2D(64, (4, 4), strides=2, padding='same'))
+        model.add(Activation('relu'))
 
-        # model.add(Conv2D(64, (3, 3), strides=1, padding='same'))
-        # model.add(Activation('relu'))
-        # model.add(Flatten())
+        model.add(Conv2D(64, (3, 3), strides=1, padding='same'))
+        model.add(Activation('relu'))
+        model.add(Flatten())
 
         # FC Layers
         model.add(Dense(512, activation='relu'))
@@ -79,7 +79,8 @@ class DQN_Agent:
         action_values = self.train_model.predict(state)
 
         # Max value is the action
-        return np.argmax(action_values[0])
+        action = np.argmax(action_values[0][0][0])
+        return action
 
     #
     # Trains model using a random batch of selected experiences the memory
@@ -182,7 +183,7 @@ if __name__ == "__main__":
 
             if done:
                 rewards += env.unwrapped.game.get_score()
-                print("iteration: ", iter, "total reward: ", rewards, "epsilon: ", epsilon)
+                print("iteration: ", iter, "total reward: ", rewards, "epsilon: ", agent.epsilon)
                 env.reset()
                 done = False
                 rewards = 0
