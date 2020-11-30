@@ -73,13 +73,14 @@ class DQN_Agent:
     def get_action(self, state):
         # Random action
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
+            action = np.random.choice(self.action_size)
+            return action
 
         # Exploit
-        action_values = self.train_model.predict(state)
+        action_values = self.train_model.predict(np.atleast_2d(state))[0]
 
         # Max value is the action
-        action = np.argmax(action_values[0][0][0])
+        action = np.argmax(action_values)
         return action
 
     #
