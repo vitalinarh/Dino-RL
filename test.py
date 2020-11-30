@@ -42,10 +42,10 @@ class DQN_Agent:
     def _build_model(self):
         model = Sequential()
 
-        model.add(Dense(512, activation='relu', input_shape=self.state_shape))
+        # model.add(Dense(512, activation='relu', input_shape=self.state_shape))
         # Convolutional layers
-        # model.add(Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
-        # model.add(Activation('relu'))
+        model.add(Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
+        model.add(Activation('relu'))
 
         # model.add(Conv2D(64, (4, 4), strides=2, padding='same'))
         # model.add(Activation('relu'))
@@ -110,12 +110,31 @@ class DQN_Agent:
         self.target_model.set_weights(self.train_model.get_weights())
 
 
+# Helpful preprocessing taken from github.com/ageron/tiny-dqn
+def process_frame(obs):
+    img = obs[1:176:2, ::2] # crop and downsize
+    img = img.mean(axis=2) # to greyscale
+    img = (img - 128) / 128 - 1 # normalize from -1. to 1.
+    return img.reshape(75, 300, 1)
+
+def blend_images(images, blend):
+    avg_image = np.expand_dims(np.zeros((75, 300, 1), np.float64), axis=0)
+
+    for image in images:
+        avg_image += image
+
+    if len(images) < blend:
+        return avg_image / len(images)
+    else:
+        return avg_image / blend
+
+
 if __name__ == "__main__":
     env = gym.make('ChromeDino-v0')
     state = env.reset()
 
     state_shape = env.observation_space.shape # (150, 600, 3)
-    state_shape = (600, 3)
+    state_shape = (75, 300, 1)
     num_states = len(env.observation_space.sample()) # 150
     num_actions = env.action_space.n    # 2
 
@@ -137,15 +156,29 @@ if __name__ == "__main__":
     rewards = 0
     total_time = 0
     batch_size = 8
-
+    blend = 4        # Number of images to blend
     iter = 0
 
     for ep in range(episodes):
+
+        state = process_frame(env.reset())
+        images = deque(maxlen=blend)  # Array of images to be blended
+        images.append(state)
+
         while True:
             iter += 1
 
+            # Return the avg of the last 4 frames
+            state = blend_images(images, blend)
+
+            # Transition Dynamics
             action = agent.get_action(state)
             next_state, reward, done, info = env.step(action)
+
+            # Return the avg of the last 4 frames
+            next_state = process_frame(next_state)
+            images.append(next_state)
+            next_state = blend_images(images, blend)
 
             if done:
                 rewards += env.unwrapped.game.get_score()
