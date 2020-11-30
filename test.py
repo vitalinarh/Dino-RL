@@ -1,149 +1,166 @@
 import gym
 import gym_chrome_dino
 from gym_chrome_dino.utils.wrappers import make_dino
+import random
 import numpy as np
+from collections import deque
 import tensorflow as tf
+from keras.models import Sequential
+from keras.layers import InputLayer, Dense, Activation, Flatten, Conv2D, MaxPooling2D
+from keras.optimizers import Adam
 import os
 import datetime
 
-class Model(tf.keras.Model):
-    # define layers with __init__
-    # input shape is [batch size, size of a state (# in this case)]
-    # output shape is [batch size, number of actions (2 in this case)].
-    def __init__(self, num_states, hidden_units, num_actions):
-        super(Model, self).__init__()
-        self.input_layer = tf.keras.layers.InputLayer(input_shape=(num_states,))
-        self.hidden_layers = []
-        for i in hidden_units:
-            self.hidden_layers.append(tf.keras.layers.Dense(i, activation='tanh', kernel_initializer='RandomNormal'))
-        self.output_layer = tf.keras.layers.Dense(num_actions, activation='linear', kernel_initializer='RandomNormal')
-
-    # implement the model's forward pass
-    # @tf.function enables autograph and automatic control dependencies
-    @tf.function
-    def call(self, inputs):
-        z = self.input_layer(inputs)
-        for layer in self.hidden_layers:
-            z = layer(z)
-        output = self.output_layer(z)
-        return output
-
-# create the Deep Q-Net model
-# define the number of actions, batch size and the optimizer for gradient descent
-# gamma is a value between 0 and 1 that is multiplied by the Q value at the next step
-# we also initialize MyModel as an instance variable self.mode and create the experience replay buffer self.experience
-# The agent won’t start learning unless the size the buffer is greater than self.min_experience, and once the buffer
-# reaches the max size self.max_experience, it will delete the oldest values to make room for the new values.
-class DQN:
-    def __init__(self, num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr):
-        self.num_actions = num_actions
-        self.batch_size = batch_size
-        self.optimizer = tf.optimizers.Adam(lr)
-        self.gamma = gamma
-        self.model = Model(num_states, hidden_units, num_actions)
-        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
-        self.max_experiences = max_experiences
+class DQN_Agent:
+    #
+    # Initialize attributes and constructs CNN train_model and target_model
+    #
+    def __init__(self, state_shape, action_size, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences):
+        self.state_shape = state_shape
+        self.action_size = action_size
         self.min_experiences = min_experiences
+        self.max_experiences = max_experiences
+        self.memory = deque(maxlen=self.max_experiences)
 
-    def predict(self, inputs):
-        return self.model(np.atleast_2d(inputs.astype('float32')))
+        # Hyperparameters
+        self.gamma = gamma                  # Discount rate
+        self.epsilon = epsilon              # Exploration rate
+        self.min_epsilon = min_epsilon      # Minimal exploration rate (epsilon-greedy)
+        self.decay = decay                  # Decay rate for epsilon
+        self.lr = lr                        # LEarning rate
+        self.update_rate = update_rate      # Number of steps until updating the target network
 
-    def train(self, TargetNet):
-        if len(self.experience['s']) < self.min_experiences:
-            return 0
-        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
-        states = np.asarray([self.experience['s'][i] for i in ids])
-        actions = np.asarray([self.experience['a'][i] for i in ids])
-        rewards = np.asarray([self.experience['r'][i] for i in ids])
-        states_next = np.asarray([self.experience['s2'][i] for i in ids])
-        dones = np.asarray([self.experience['done'][i] for i in ids])
-        value_next = np.max(TargetNet.predict(states_next), axis=1)
-        actual_values = np.where(dones, rewards, rewards+self.gamma*value_next)
+        # Construct DQN models
+        self.train_model = self._build_model()
+        self.target_model = self._build_model()
 
-        with tf.GradientTape() as tape:
-            selected_action_values = tf.math.reduce_sum(
-                self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
-            loss = tf.math.reduce_mean(tf.square(actual_values - selected_action_values))
-        variables = self.model.trainable_variables
-        gradients = tape.gradient(loss, variables)
-        self.optimizer.apply_gradients(zip(gradients, variables))
-        return loss
+        self.train_model.summary()
 
-    def get_action(self, states, epsilon):
-        if np.random.random() < epsilon:
-            return np.random.choice(self.num_actions)
-        else:
-            return np.argmax(self.predict(np.atleast_2d(states))[0])
+    #
+    # Constructs model
+    #
+    def _build_model(self):
+        model = Sequential()
 
-    def add_experience(self, exp):
-        if len(self.experience['s']) >= self.max_experiences:
-            for key in self.experience.keys():
-                self.experience[key].pop(0)
-        for key, value in exp.items():
-            self.experience[key].append(value)
+        model.add(Dense(512, activation='relu', input_shape=self.state_shape))
+        # Convolutional layers
+        # model.add(Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
+        # model.add(Activation('relu'))
 
-    def copy_weights(self, TrainNet):
-        variables1 = self.model.trainable_variables
-        variables2 = TrainNet.model.trainable_variables
-        for v1, v2 in zip(variables1, variables2):
-            v1.assign(v2.numpy())
+        # model.add(Conv2D(64, (4, 4), strides=2, padding='same'))
+        # model.add(Activation('relu'))
 
-def play(env, TrainNet, TargetNet, epsilon, decay, copy_step):
+        # model.add(Conv2D(64, (3, 3), strides=1, padding='same'))
+        # model.add(Activation('relu'))
+        # model.add(Flatten())
 
-    rewards = 0
-    done = False
-    observations = env.reset()
-    losses = []
-    i = 0
+        # FC Layers
+        model.add(Dense(512, activation='relu'))
+        model.add(Dense(self.action_size, activation='linear'))
 
-    while True:
-        epsilon = max(min_epsilon, epsilon * decay)
-        prev_observations = observations
-        if done:
-            score = env.unwrapped.game.get_score()
-            rewards = score
-            print("iteration: ", i, "total reward: ", rewards)
-            env.reset()
-        action = TrainNet.get_action(observations, epsilon)
-        observation, reward, done, info = env.step(action)
-        rewards += reward
+        model.compile(loss='mse', optimizer=Adam())
+        return model
 
-        exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
-        TrainNet.add_experience(exp)
-        loss = TrainNet.train(TargetNet)
-        if isinstance(loss, int):
-            losses.append(loss)
-        else:
-            losses.append(loss.numpy())
-        i += 1
-        if i % copy_step == 0:
-            TargetNet.copy_weights(TrainNet)
+    #
+    # Stores experience in replay memory
+    #
+    def add_experience(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
 
-    return rewards, np.mean(losses)
+    #
+    # Chooses action based on epsilon-greedy policy
+    #
+    def get_action(self, state):
+        # Random action
+        if np.random.rand() <= self.epsilon:
+            return random.randrange(self.action_size)
+
+        # Exploit
+        action_values = self.train_model.predict(state)
+
+        # Max value is the action
+        return np.argmax(action_values[0])
+
+    #
+    # Trains model using a random batch of selected experiences the memory
+    #
+    def train(self, batch_size):
+        minibatch = random.sample(self.memory, batch_size)
+
+        for state, action, reward, next_state, done in minibatch:
+            if not done:
+                target = (reward + self.gamma * np.amax(self.target_model.predict(next_state)))
+            else:
+                target = reward
+
+            # Construct the target vector as follows:
+            # 1. Use the current model to output the Q-value predictions
+            target_f = self.train_model.predict(state)
+            # 2. Rewrite the chosen action value with the computed target
+            target_f[0][action] = target
+            # 3. Use vectors in the objective computation
+            self.train_model.fit(state, target_f, epochs=1, verbose=0)
+
+        self.epsilon = max(min_epsilon, epsilon * decay)
+
+    #
+    # Sets the target model parameters to the current model parameters
+    #
+    def update_target_model(self):
+        self.target_model.set_weights(self.train_model.get_weights())
+
 
 if __name__ == "__main__":
     env = gym.make('ChromeDino-v0')
-    env.reset()
+    state = env.reset()
 
-    num_states = len(env.observation_space.sample())
-    num_actions = env.action_space.n
+    state_shape = env.observation_space.shape # (150, 600, 3)
+    state_shape = (600, 3)
+    num_states = len(env.observation_space.sample()) # 150
+    num_actions = env.action_space.n    # 2
 
     gamma = 0.99 #  decay rate of past observations original 0.99
-    copy_step = 25
+    update_rate = 100
 
-    hidden_units = [200, 200]
     max_experiences = 10000
-    min_experiences = 100 # # timesteps to observe before training
+    min_experiences = 100
 
-    batch_size = 1 # # size of minibatch, keep it low
-    lr = 1e-2
+    epsilon = 0.99    # starting value of epsilon
+    min_epsilon = 0.1 # final value for epsilon
+    decay = 0.9       # epsilon decay rate
 
-    TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
-    TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
+    lr = 1e-2         # learning rate
 
-    N = 1000
-    epsilon = 0.99 # # starting value of epsilon
-    decay = 0.9999
-    min_epsilon = 0.1 # # final value of epsilon
+    agent = DQN_Agent(state_shape, num_actions, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences)
 
-    play(env, TrainNet, TargetNet, epsilon, decay, copy_step)
+    episodes = 1000
+    rewards = 0
+    total_time = 0
+    batch_size = 8
+
+    iter = 0
+
+    for ep in range(episodes):
+        while True:
+            iter += 1
+
+            action = agent.get_action(state)
+            next_state, reward, done, info = env.step(action)
+            print(done)
+
+            if done:
+                rewards += env.unwrapped.game.get_score()
+                print("iteration: ", iter, "total reward: ", rewards, "epsilon: ", epsilon)
+                env.reset()
+                done = False
+                rewards = 0
+
+            reward += env.unwrapped.game.get_score()
+
+            # Store sequence in replay memory
+            agent.add_experience(state, action, reward, next_state, done)
+
+            if len(agent.memory) > batch_size and len(agent.memory) > agent.min_experiences:
+                print("Training...")
+                print(len(agent.memory))
+                agent.train(batch_size)
