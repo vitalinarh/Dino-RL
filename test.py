@@ -146,7 +146,6 @@ if __name__ == "__main__":
 
             action = agent.get_action(state)
             next_state, reward, done, info = env.step(action)
-            print(done)
 
             if done:
                 rewards += env.unwrapped.game.get_score()
@@ -162,5 +161,4 @@ if __name__ == "__main__":
 
             if len(agent.memory) > batch_size and len(agent.memory) > agent.min_experiences:
                 print("Training...")
-                print(len(agent.memory))
                 agent.train(batch_size)
