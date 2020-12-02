@@ -1,0 +1,5 @@
+gym_chrome_dino
+gym_chrome_dino.utils.wrappers
+numpy
+tensorflow
+keras

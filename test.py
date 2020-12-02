@@ -13,7 +13,7 @@ import datetime
 
 class DQN_Agent:
     #
-    # Initialize attributes and constructs CNN train_model and target_model
+    # Initialize attributes and construct CNN train_model and target_model
     #
     def __init__(self, state_shape, action_size, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences):
         self.state_shape = state_shape
@@ -33,7 +33,7 @@ class DQN_Agent:
         # Construct DQN models
         self.train_model = self._build_model()
         self.target_model = self._build_model()
-
+        self.target_model.set_weights(self.train_model.get_weights())
         self.train_model.summary()
 
     #
@@ -58,7 +58,7 @@ class DQN_Agent:
         model.add(Dense(512, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
 
-        model.compile(loss='mse', optimizer=Adam())
+        model.compile(loss='mse', optimizer=Adam(learning_rate=self.lr))
         return model
 
     #
@@ -91,31 +91,30 @@ class DQN_Agent:
 
         for state, action, reward, next_state, done in minibatch:
             if not done:
-                target = (reward + self.gamma * np.amax(self.target_model.predict(next_state)))
+                # Q-Target = rewaard + γ * Q(s’,argmax(Q(s’,a,ϴ),ϴ’))
+                q_v = self.target_model.predict(next_state)
+                target = (reward + self.gamma * np.amax(q_v))
             else:
                 target = reward
 
-            # Construct the target vector as follows:
-            # 1. Use the current model to output the Q-value predictions
+            # use the current model to output the Q-value predictions
             target_f = self.train_model.predict(state)
-            # 2. Rewrite the chosen action value with the computed target
+            # rewrite the chosen action value with the computed target
             target_f[0][action] = target
-            # 3. Use vectors in the objective computation
+            # use vectors in the objective computation
             self.train_model.fit(state, target_f, epochs=1, verbose=0)
 
-        self.epsilon = max(min_epsilon, epsilon * decay)
-
     #
-    # Sets the target model parameters to the current model parameters
+    # Set the target model parameters to the current model parameters
     #
     def update_target_model(self):
         self.target_model.set_weights(self.train_model.get_weights())
 
 
-# Helpful preprocessing taken from github.com/ageron/tiny-dqn
+# Preprocessing taken from github.com/ageron/tiny-dqn
 def process_frame(obs):
-    img = obs[1:176:2, ::2] # crop and downsize
-    img = img.mean(axis=2) # to greyscale
+    img = obs[1:176:2, ::2]     # crop and downsize
+    img = img.mean(axis=2)      # to greyscale
     img = (img - 128) / 128 - 1 # normalize from -1. to 1.
     return img.reshape(75, 300, 1)
 
@@ -136,28 +135,28 @@ if __name__ == "__main__":
     state = env.reset()
 
     state_shape = env.observation_space.shape # (150, 600, 3)
-    state_shape = (75, 300, 1)
-    num_states = len(env.observation_space.sample()) # 150
-    num_actions = env.action_space.n    # 2
+    state_shape = (75, 300, 1)                # downsample of the original state size
+    num_actions = env.action_space.n          # 2
 
     gamma = 0.99 #  decay rate of past observations original 0.99
-    update_rate = 100
+    update_rate = 2000
+    train_rate = 250
 
     max_experiences = 10000
-    min_experiences = 100
+    min_experiences = 500
 
     epsilon = 0.99    # starting value of epsilon
     min_epsilon = 0.1 # final value for epsilon
-    decay = 0.9       # epsilon decay rate
+    decay = 0.9999       # epsilon decay rate
 
     lr = 1e-2         # learning rate
 
     agent = DQN_Agent(state_shape, num_actions, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences)
 
-    episodes = 1000
+    episodes = 10000
     rewards = 0
     total_time = 0
-    batch_size = 8
+    batch_size = 32
     blend = 4        # Number of images to blend
     iter = 0
 
@@ -170,12 +169,18 @@ if __name__ == "__main__":
         while True:
             iter += 1
 
-            # Return the avg of the last 4 frames
+            # Every update_rate timesteps we update the target network parameters
+            if iter % agent.update_rate == 0:
+                agent.update_target_model()
+
+            # Return the average of the last 4 frames
             state = blend_images(images, blend)
 
-            # Transition Dynamics
+            # Transitions from one state to the next through the chosen action
             action = agent.get_action(state)
             next_state, reward, done, info = env.step(action)
+
+            agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
 
             # Return the avg of the last 4 frames
             next_state = process_frame(next_state)
@@ -188,12 +193,13 @@ if __name__ == "__main__":
                 env.reset()
                 done = False
                 rewards = 0
+                break
 
             reward += env.unwrapped.game.get_score()
 
             # Store sequence in replay memory
             agent.add_experience(state, action, reward, next_state, done)
 
-            if len(agent.memory) > batch_size and len(agent.memory) > agent.min_experiences:
+            if len(agent.memory) > agent.min_experiences and iter % train_rate == 0:
                 print("Training...")
                 agent.train(batch_size)
