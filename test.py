@@ -1,15 +1,31 @@
-import gym
-import gym_chrome_dino
-from gym_chrome_dino.utils.wrappers import make_dino
-import random
-import numpy as np
-from collections import deque
-import tensorflow as tf
-from keras.models import Sequential
-from keras.layers import InputLayer, Dense, Activation, Flatten, Conv2D, MaxPooling2D
-from keras.optimizers import Adam
-import os
-import datetime
+try:
+    import gym
+    import gym_chrome_dino
+    from gym_chrome_dino.utils.wrappers import make_dino
+    import random
+    import numpy as np
+    from collections import deque
+    import tensorflow as tf
+    from keras.models import Sequential
+    from keras.layers import InputLayer, Dense, Activation, Flatten, Conv2D, MaxPooling2D
+    from keras.optimizers import Adam
+    import os
+    import datetime
+except:
+    import install_requirements  # install packages
+    import gym
+    import gym_chrome_dino
+    from gym_chrome_dino.utils.wrappers import make_dino
+    import random
+    import numpy as np
+    from collections import deque
+    import tensorflow as tf
+    from keras.models import Sequential
+    from keras.layers import InputLayer, Dense, Activation, Flatten, Conv2D, MaxPooling2D
+    from keras.optimizers import Adam
+    import os
+    import datetime
+
 
 class DQN_Agent:
     #
@@ -44,18 +60,18 @@ class DQN_Agent:
 
         # model.add(Dense(512, activation='relu', input_shape=self.state_shape))
         # Convolutional layers
-        model.add(Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
+        model.add(Conv2D(16, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
         model.add(Activation('relu'))
 
-        model.add(Conv2D(64, (4, 4), strides=2, padding='same'))
+        model.add(Conv2D(32, (4, 4), strides=2, padding='same'))
         model.add(Activation('relu'))
 
-        model.add(Conv2D(64, (3, 3), strides=1, padding='same'))
+        model.add(Conv2D(32, (3, 3), strides=1, padding='same'))
         model.add(Activation('relu'))
         model.add(Flatten())
 
         # FC Layers
-        model.add(Dense(512, activation='relu'))
+        model.add(Dense(128, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
 
         model.compile(loss='mse', optimizer=Adam(learning_rate=self.lr))
@@ -84,7 +100,7 @@ class DQN_Agent:
         return action
 
     #
-    # Trains model using a random batch of selected experiences the memory
+    # Trains model using a random batch of selected experiences in the memory
     #
     def train(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
