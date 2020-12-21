@@ -56,10 +56,11 @@ class DQN_Agent:
     # Constructs model
     #
     def _build_model(self):
+
         model = Sequential()
 
-        # model.add(Dense(512, activation='relu', input_shape=self.state_shape))
         # Convolutional layers
+
         model.add(Conv2D(16, (8, 8), strides=4, padding='same', input_shape=self.state_shape))
         model.add(Activation('relu'))
 
@@ -71,10 +72,10 @@ class DQN_Agent:
         model.add(Flatten())
 
         # FC Layers
-        model.add(Dense(128, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
 
         model.compile(loss='mse', optimizer=Adam(learning_rate=self.lr))
+
         return model
 
     #
@@ -93,10 +94,9 @@ class DQN_Agent:
             return action
 
         # Exploit
-        action_values = self.train_model.predict(np.atleast_2d(state))[0]
-
+        action_values = self.train_model.predict(state)
         # Max value is the action
-        action = np.argmax(action_values)
+        action = np.argmax(action_values[0])
         return action
 
     #
@@ -104,20 +104,14 @@ class DQN_Agent:
     #
     def train(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
-
         for state, action, reward, next_state, done in minibatch:
+            target = reward
             if not done:
-                # Q-Target = rewaard + γ * Q(s’,argmax(Q(s’,a,ϴ),ϴ’))
-                q_v = self.target_model.predict(next_state)
-                target = (reward + self.gamma * np.amax(q_v))
-            else:
-                target = reward
+                target = (reward + self.gamma *
+                          np.amax(self.train_model.predict(next_state)[0]))
 
-            # use the current model to output the Q-value predictions
             target_f = self.train_model.predict(state)
-            # rewrite the chosen action value with the computed target
             target_f[0][action] = target
-            # use vectors in the objective computation
             self.train_model.fit(state, target_f, epochs=1, verbose=0)
 
     #
@@ -126,10 +120,22 @@ class DQN_Agent:
     def update_target_model(self):
         self.target_model.set_weights(self.train_model.get_weights())
 
+    #
+    # Save parameters of the trained models
+    #
+    def save_network(self, name):
+        self.train_model.save_weights(name)
+
+    #
+    # Load parametres of the trained model
+    #
+    def load_network(self, name):
+        self.train_model.load_weights(name)
+
 
 # Preprocessing taken from github.com/ageron/tiny-dqn
 def process_frame(obs):
-    img = obs[1:176:2, ::2]     # crop and downsize
+    img = obs[::2, ::2]     # crop and downsize
     img = img.mean(axis=2)      # to greyscale
     img = (img - 128) / 128 - 1 # normalize from -1. to 1.
     return img.reshape(75, 300, 1)
@@ -148,74 +154,91 @@ def blend_images(images, blend):
 
 if __name__ == "__main__":
     env = gym.make('ChromeDino-v0')
+    env._max_episodes=5000
     state = env.reset()
 
-    state_shape = env.observation_space.shape # (150, 600, 3)
+    state_shape = env.observation_space.shape[0] # (150, 600, 3)
+    print(state_shape)
     state_shape = (75, 300, 1)                # downsample of the original state size
     num_actions = env.action_space.n          # 2
 
-    gamma = 0.99 #  decay rate of past observations original 0.99
-    update_rate = 2000
-    train_rate = 250
+    gamma = 0.95 #  decay rate of past observations original 0.99
+    update_rate = 1000
+    train_rate = 500
 
-    max_experiences = 10000
-    min_experiences = 500
+    max_experiences = 5000
+    min_experiences = 100
 
-    epsilon = 0.99    # starting value of epsilon
-    min_epsilon = 0.1 # final value for epsilon
-    decay = 0.9999       # epsilon decay rate
+    epsilon = 1.0     # starting value of epsilon
+    min_epsilon = 0.01 # final value for epsilon
+    decay = 0.99       # epsilon decay rate
 
     lr = 1e-2         # learning rate
-
-    agent = DQN_Agent(state_shape, num_actions, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences)
 
     episodes = 10000
     rewards = 0
     total_time = 0
     batch_size = 32
-    blend = 4        # Number of images to blend
-    iter = 0
+    blend = 1        # Number of images to blend
+
+    total_steps = 0
+
+    agent = DQN_Agent(state_shape, num_actions, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences)
 
     for ep in range(episodes):
 
+        iter = 0
         state = process_frame(env.reset())
         images = deque(maxlen=blend)  # Array of images to be blended
         images.append(state)
+        next_state, reward, done, info = env.step(1)
+
+        rewards = 0
+        done = False
 
         while True:
             iter += 1
+            total_steps += 1
+            reward = 0
 
             # Every update_rate timesteps we update the target network parameters
-            if iter % agent.update_rate == 0:
+            if total_steps % agent.update_rate == 0:
                 agent.update_target_model()
 
             # Return the average of the last 4 frames
             state = blend_images(images, blend)
 
             # Transitions from one state to the next through the chosen action
-            action = agent.get_action(state)
-            next_state, reward, done, info = env.step(action)
+            if iter < 40:
+                action = 0
+            else:
+                action = agent.get_action(state)
 
-            agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
+            next_state, reward, done, info = env.step(action)
 
             # Return the avg of the last 4 frames
             next_state = process_frame(next_state)
             images.append(next_state)
             next_state = blend_images(images, blend)
 
+            state = next_state
+
             if done:
-                rewards += env.unwrapped.game.get_score()
-                print("iteration: ", iter, "total reward: ", rewards, "epsilon: ", agent.epsilon)
-                env.reset()
-                done = False
-                rewards = 0
+                agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
+                rewards = env.unwrapped.game.get_score()
+
+                print("episode: ", ep,
+                      "iteration: ", total_steps,
+                      "total reward: ", rewards,
+                      "epsilon: ", agent.epsilon)
+
+                print("Training...")
+                agent.train(batch_size)
+                agent.save_network("models/agent")
+
                 break
 
             reward += env.unwrapped.game.get_score()
 
             # Store sequence in replay memory
             agent.add_experience(state, action, reward, next_state, done)
-
-            if len(agent.memory) > agent.min_experiences and iter % train_rate == 0:
-                print("Training...")
-                agent.train(batch_size)
