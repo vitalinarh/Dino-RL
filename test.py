@@ -11,6 +11,7 @@ try:
     from keras.optimizers import Adam
     import os
     import datetime
+    import cv2
 except:
     import install_requirements  # install packages
     import gym
@@ -108,7 +109,7 @@ class DQN_Agent:
             target = reward
             if not done:
                 target = (reward + self.gamma *
-                          np.amax(self.train_model.predict(next_state)[0]))
+                          np.amax(self.target_model.predict(next_state)[0]))
 
             target_f = self.train_model.predict(state)
             target_f[0][action] = target
@@ -135,13 +136,14 @@ class DQN_Agent:
 
 # Preprocessing taken from github.com/ageron/tiny-dqn
 def process_frame(obs):
-    img = obs[::2, ::2]     # crop and downsize
-    img = img.mean(axis=2)      # to greyscale
+    img = obs[:75, :200]     # crop and downsize
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #img = img.mean(axis=2)      # to greyscale
     img = (img - 128) / 128 - 1 # normalize from -1. to 1.
-    return img.reshape(75, 300, 1)
+    return img.reshape(75, 200, 1)
 
 def blend_images(images, blend):
-    avg_image = np.expand_dims(np.zeros((75, 300, 1), np.float64), axis=0)
+    avg_image = np.expand_dims(np.zeros((75, 200, 1), np.float64), axis=0)
 
     for image in images:
         avg_image += image
@@ -157,9 +159,8 @@ if __name__ == "__main__":
     env._max_episodes=5000
     state = env.reset()
 
-    state_shape = env.observation_space.shape[0] # (150, 600, 3)
-    print(state_shape)
-    state_shape = (75, 300, 1)                # downsample of the original state size
+    state_shape = env.observation_space.shape # (150, 600, 3)
+    state_shape = (75, 200, 1)                # downsample of the original state size
     num_actions = env.action_space.n          # 2
 
     gamma = 0.95 #  decay rate of past observations original 0.99
@@ -169,8 +170,8 @@ if __name__ == "__main__":
     max_experiences = 5000
     min_experiences = 100
 
-    epsilon = 1.0     # starting value of epsilon
-    min_epsilon = 0.01 # final value for epsilon
+    epsilon = 1.0        # starting value of epsilon
+    min_epsilon = 0.1    # final value for epsilon
     decay = 0.99       # epsilon decay rate
 
     lr = 1e-2         # learning rate
@@ -178,7 +179,7 @@ if __name__ == "__main__":
     episodes = 10000
     rewards = 0
     total_time = 0
-    batch_size = 32
+    batch_size = 64
     blend = 1        # Number of images to blend
 
     total_steps = 0
@@ -209,7 +210,7 @@ if __name__ == "__main__":
             state = blend_images(images, blend)
 
             # Transitions from one state to the next through the chosen action
-            if iter < 40:
+            if iter < 60:
                 action = 0
             else:
                 action = agent.get_action(state)
@@ -220,8 +221,6 @@ if __name__ == "__main__":
             next_state = process_frame(next_state)
             images.append(next_state)
             next_state = blend_images(images, blend)
-
-            state = next_state
 
             if done:
                 agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
@@ -242,3 +241,5 @@ if __name__ == "__main__":
 
             # Store sequence in replay memory
             agent.add_experience(state, action, reward, next_state, done)
+
+            state = next_state
