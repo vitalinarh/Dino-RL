@@ -141,7 +141,7 @@ def process_frame(obs):
     img = obs[40:, 20:170]     # crop and downsize
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     #img = img.mean(axis=2)      # to greyscale
-    #img = (img - 128) / 128 - 1 # normalize from -1. to 1.
+    img = (img - 128) / 128 - 1 # normalize from -1. to 1.
     #display.display(img, "cropped")
     return img.reshape(110, 150, 1)
 
