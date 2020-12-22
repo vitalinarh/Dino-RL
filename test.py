@@ -241,7 +241,7 @@ if __name__ == "__main__":
 
                 break
 
-            reward += env.unwrapped.game.get_score()
+            #reward += env.unwrapped.game.get_score()
 
             # Store sequence in replay memory
             agent.add_experience(state, action, reward, next_state, done)
