@@ -12,6 +12,7 @@ try:
     import os
     import datetime
     import cv2
+    import display
 except:
     import install_requirements  # install packages
     import gym
@@ -136,14 +137,16 @@ class DQN_Agent:
 
 # Preprocessing taken from github.com/ageron/tiny-dqn
 def process_frame(obs):
-    img = obs[:75, :200]     # crop and downsize
+    #display.display(obs, "original")
+    img = obs[40:, 20:170]     # crop and downsize
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     #img = img.mean(axis=2)      # to greyscale
-    img = (img - 128) / 128 - 1 # normalize from -1. to 1.
-    return img.reshape(75, 200, 1)
+    #img = (img - 128) / 128 - 1 # normalize from -1. to 1.
+    #display.display(img, "cropped")
+    return img.reshape(110, 150, 1)
 
 def blend_images(images, blend):
-    avg_image = np.expand_dims(np.zeros((75, 200, 1), np.float64), axis=0)
+    avg_image = np.expand_dims(np.zeros((110, 150, 1), np.float64), axis=0)
 
     for image in images:
         avg_image += image
@@ -156,11 +159,10 @@ def blend_images(images, blend):
 
 if __name__ == "__main__":
     env = gym.make('ChromeDino-v0')
-    env._max_episodes=5000
     state = env.reset()
 
     state_shape = env.observation_space.shape # (150, 600, 3)
-    state_shape = (75, 200, 1)                # downsample of the original state size
+    state_shape = (110, 150, 1)                # downsample of the original state size
     num_actions = env.action_space.n          # 2
 
     gamma = 0.95 #  decay rate of past observations original 0.99
@@ -179,7 +181,7 @@ if __name__ == "__main__":
     episodes = 10000
     rewards = 0
     total_time = 0
-    batch_size = 64
+    batch_size = 32
     blend = 1        # Number of images to blend
 
     total_steps = 0
@@ -210,7 +212,7 @@ if __name__ == "__main__":
             state = blend_images(images, blend)
 
             # Transitions from one state to the next through the chosen action
-            if iter < 60:
+            if iter < 40:
                 action = 0
             else:
                 action = agent.get_action(state)
@@ -229,11 +231,13 @@ if __name__ == "__main__":
                 print("episode: ", ep,
                       "iteration: ", total_steps,
                       "total reward: ", rewards,
-                      "epsilon: ", agent.epsilon)
+                      "epsilon: ", agent.epsilon,
+                      "experiences:", len(agent.memory))
 
-                print("Training...")
-                agent.train(batch_size)
-                agent.save_network("models/agent")
+                if len(agent.memory) > batch_size:
+                    print("Training...")
+                    agent.train(batch_size)
+                    agent.save_network("models/agent")
 
                 break
 
