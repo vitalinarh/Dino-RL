@@ -1,6 +1,6 @@
 # Dino-RL
 
-Reinforcement Learning implemention to design a automatic agent to play the T-Rex Game, also known as the Dinosaur Game.
+Reinforcement Learning implemention to design a automated agent to play the T-Rex Game, also known as the Dinosaur Game.
 
 ## Usage
 
