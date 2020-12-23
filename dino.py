@@ -175,8 +175,9 @@ if __name__ == "__main__":
         pass
     elif args.argv=="newTrain":
         os.system('rm -r models')
+        os.system('rm logs.txt')
     else:
-        print("usage: test.py [-h] [-train] [-newTrain] [-test]")
+        print("usage: dino.py [-h] [-train] [-newTrain] [-test]")
         sys.exit()
 
     env = gym.make('ChromeDino-v0')
