@@ -202,6 +202,9 @@ if __name__ == "__main__":
     min_epsilon = 0.1    # final value for epsilon
     decay = 0.99       # epsilon decay rate
 
+    if args.argv=="test":
+        min_epsilon = 0
+
     lr = 1e-2         # learning rate
 
     episodes = 10000
