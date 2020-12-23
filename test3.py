@@ -164,7 +164,8 @@ def blend_images(images, blend):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Dino ML Agent')
-    parser.add_argument("-train", action='store_const', const='train', dest="argv" ,help='Train a agent. Delete the folder "models" for a new agent.')
+    parser.add_argument("-train", action='store_const', const='train', dest="argv" ,help='Train an agent. Previous progress saved in folder "models"')
+    parser.add_argument("-newTrain", action='store_const', const='newTrain' ,dest="argv", help='Train an new agent. Previous agent weights will be deleted.')
     parser.add_argument("-test", action='store_const', const='test' ,dest="argv", help='Use the weights saved in the folder "models" for the agent.')
 
     args = parser.parse_args()
@@ -172,8 +173,10 @@ if __name__ == "__main__":
     # check args
     if args.argv=="train" or args.argv=="test":
         pass
+    elif args.argv=="newTrain":
+        os.system('rm -r models')
     else:
-        print("usage: test.py [-h] [-train] [-test]")
+        print("usage: test.py [-h] [-train] [-newTrain] [-test]")
         sys.exit()
 
     env = gym.make('ChromeDino-v0')
@@ -256,7 +259,7 @@ if __name__ == "__main__":
                       "total reward: ", rewards,
                       "epsilon: ", agent.epsilon,
                       "experiences:", len(agent.memory))
-                if args.argv=="train" :
+                if args.argv=="train" or args.argv=="newTrain":
                     f = open("logs.txt", "a")
                     L = "%d %d %d %f\n" % (ep+1, rewards, total_steps, agent.epsilon)
                     f.writelines(L)
@@ -271,7 +274,7 @@ if __name__ == "__main__":
             #reward += env.unwrapped.game.get_score()
 
             # Store sequence in replay memory
-            if args.argv=="train":
+            if args.argv=="train" or args.argv=="newTrain":
                 agent.add_experience(state, action, reward, next_state, done)
 
             state = next_state
