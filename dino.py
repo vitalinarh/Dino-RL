@@ -145,15 +145,16 @@ class DQN_Agent:
 # Preprocessing taken from github.com/ageron/tiny-dqn
 def process_frame(obs):
     #display.display(obs, "original")
-    img = obs[40:, 20:170]     # crop and downsize
+    img = obs[20::2, 20:180:2]     # crop and downsize
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    (thresh, img) = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
     #img = img.mean(axis=2)      # to greyscale
-    img = (img - 128) / 128 - 1 # normalize from -1. to 1.
+    #img = (img - 128) / 128 - 1 # normalize from -1. to 1.
     #display.display(img, "cropped")
-    return img.reshape(110, 150, 1)
+    return img.reshape(65, 80, 1)
 
 def blend_images(images, blend):
-    avg_image = np.expand_dims(np.zeros((110, 150, 1), np.float64), axis=0)
+    avg_image = np.expand_dims(np.zeros((65, 80, 1), np.float64), axis=0)
 
     for image in images:
         avg_image += image
@@ -187,7 +188,7 @@ if __name__ == "__main__":
     state = env.reset()
 
     state_shape = env.observation_space.shape # (150, 600, 3)
-    state_shape = (110, 150, 1)                # downsample of the original state size
+    state_shape = (65, 80, 1)                # downsample of the original state size
     num_actions = env.action_space.n          # 2
 
     gamma = 0.99 #  decay rate of past observations original 0.99
