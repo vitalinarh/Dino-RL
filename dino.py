@@ -254,15 +254,19 @@ if __name__ == "__main__":
             next_state = blend_images(images, blend)
 
             if done:
-                agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
                 rewards = env.unwrapped.game.get_score()
-
-                print("episode: ", ep,
+                if args.argv=="test":
+                    agent.epsilon = 0
+                    print("episode: ", ep,
+                        "iteration: ", total_steps,
+                        "total reward: ", rewards)
+                if args.argv=="train" or args.argv=="newTrain":
+                    agent.epsilon = max(agent.min_epsilon, agent.epsilon * agent.decay)
+                    print("episode: ", ep,
                       "iteration: ", total_steps,
                       "total reward: ", rewards,
                       "epsilon: ", agent.epsilon,
                       "experiences:", len(agent.memory))
-                if args.argv=="train" or args.argv=="newTrain":
                     f = open("logs.txt", "a")
                     L = "%d %d %d %f\n" % (ep+1, rewards, total_steps, agent.epsilon)
                     f.writelines(L)
