@@ -201,15 +201,13 @@ if __name__ == "__main__":
     lr = 1e-2         # learning rate
 
     episodes = 10000
-    rewards = 0
-    total_time = 0
     batch_size = 32
     blend = 4        # Number of images to blend
 
     total_steps = 0
 
 
-    
+
     agent = DQN_Agent(state_shape, num_actions, gamma, epsilon, min_epsilon, decay, lr, update_rate, max_experiences, min_experiences)
 
     if args.argv=="test":
