@@ -110,15 +110,18 @@ class DQN_Agent:
     #
     def train(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
+        states, targets_f = [], []
         for state, action, reward, next_state, done in minibatch:
             target = reward
             if not done:
                 target = (reward + self.gamma *
                           np.amax(self.target_model.predict(next_state)[0]))
-
-            target_f = self.train_model.predict(state)
+            target_f = self.target_model.predict(state)
             target_f[0][action] = target
-            self.train_model.fit(state, target_f, epochs=1, verbose=0)
+            # Filtering out states and targets for training
+            states.append(state[0])
+            targets_f.append(target_f[0])
+        history = self.train_model.fit(np.array(states), np.array(targets_f), epochs=1, verbose=0)
 
     #
     # Set the target model parameters to the current model parameters
