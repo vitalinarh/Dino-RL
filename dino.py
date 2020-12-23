@@ -204,7 +204,7 @@ if __name__ == "__main__":
     rewards = 0
     total_time = 0
     batch_size = 32
-    blend = 1        # Number of images to blend
+    blend = 4        # Number of images to blend
 
     total_steps = 0
 
